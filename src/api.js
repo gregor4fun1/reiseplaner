@@ -77,21 +77,50 @@ async function routeData(db, env, from, to) {
   return out;
 }
 
-// Verlauf einer Fährlinie aus OpenStreetMap: ein Weg mit route=ferry, der an beiden Häfen (8 km Umkreis) vorbeiführt.
+const rad = d => d * Math.PI / 180;
+// Luftlinie in km zwischen zwei Punkten [lat, lon]
+const air = (a, b) => 12742 * Math.asin(Math.sqrt(Math.sin(rad(b[0] - a[0]) / 2) ** 2 + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(rad(b[1] - a[1]) / 2) ** 2));
+
+// Sucht aus Fährlinien (je eine Punktliste) den Verlauf von A nach B: eine durchgehende Linie
+// oder zwei Teilstücke, die an einem Zwischenhafen zusammenstoßen (z. B. Bergen–Stavanger–Hirtshals).
+// shortcut: höchstens ein Zwischenhafen; für längere Ketten eine Wegsuche über alle Teilstücke bauen.
+export function ferryPath(ways, A, B) {
+  const PORT = 8, JOIN = 3; // km
+  const from = (c, P) => (air(c[0], P) <= air(c.at(-1), P) ? c : [...c].reverse()); // so drehen, dass die Linie bei P beginnt
+  const starts = P => ways.filter(c => c.length > 1).map(c => from(c, P)).filter(c => air(c[0], P) < PORT);
+  let best = null, score = Infinity;
+  for (const a of starts(A)) {
+    if (air(a.at(-1), B) < PORT && air(a.at(-1), B) < score) { score = air(a.at(-1), B); best = a; }
+  }
+  if (best) return best;
+  for (const a of starts(A)) for (const b of starts(B)) {
+    const gap = air(a.at(-1), b.at(-1));
+    if (gap < JOIN && gap < score) { score = gap; best = [...a, ...[...b].reverse()]; }
+  }
+  return best;
+}
+
+// Verlauf einer Fährlinie aus OpenStreetMap (Wege mit route=ferry im Umkreis der beiden Häfen).
 // null heißt: nichts gefunden oder Dienst überlastet, die Oberfläche zeichnet eine gerade Linie und fragt später wieder.
-// shortcut: findet nur Linien, die in OpenStreetMap als ein einziger Weg erfasst sind; für zusammengesetzte Linien Relationen auswerten.
 async function ferryData(db, from, to) {
   const k = `faehre:${from};${to}`;
   const hit = await db.prepare('SELECT json FROM routes WHERE k = ?').bind(k).first();
   if (hit) return JSON.parse(hit.json);
-  const q = `[out:json][timeout:20];way[route=ferry](around:8000,${from})->.a;way.a(around:8000,${to});out geom;`;
-  const r = await fetch('https://overpass-api.de/api/interpreter', {
-    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': 'reiseplaner' }, body: 'data=' + encodeURIComponent(q),
-  }).catch(() => null);
-  if (!r?.ok) return null;
-  const way = (await r.json().catch(() => null))?.elements?.[0];
-  if (!way?.geometry?.length) return null;
-  const out = { coords: way.geometry.map(p => [p.lat, p.lon]), name: way.tags?.name || null };
+  const q = `[out:json][timeout:25];(way[route=ferry](around:8000,${from});way[route=ferry](around:8000,${to}););out geom;`;
+  let ways = null;
+  // Der öffentliche Dienst ist oft überlastet, deshalb ein zweiter Server als Ausweg.
+  for (const host of ['https://overpass-api.de', 'https://overpass.private.coffee']) {
+    const r = await fetch(`${host}/api/interpreter`, {
+      method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': 'reiseplaner' }, body: 'data=' + encodeURIComponent(q),
+    }).catch(() => null);
+    const data = r?.ok ? await r.json().catch(() => null) : null;
+    if (data?.elements) { ways = data.elements.filter(e => e.geometry).map(e => e.geometry.map(p => [p.lat, p.lon])); break; }
+  }
+  if (!ways) return null;
+  const num = p => p.split(',').map(Number);
+  const coords = ferryPath(ways, num(from), num(to));
+  if (!coords) return null;
+  const out = { coords };
   await db.prepare('INSERT OR REPLACE INTO routes (k, json) VALUES (?, ?)').bind(k, JSON.stringify(out)).run();
   return out;
 }
@@ -100,8 +129,6 @@ async function ferryData(db, from, to) {
 // Reihenfolge wie in der Oberfläche: Stationen nach Datum und Uhrzeit, dazu Tagesausflüge ab ihrem Aufenthalt.
 async function routesOverview(db, env, items) {
   const pt = i => `${i.lat.toFixed(5)},${i.lon.toFixed(5)}`;
-  const rad = d => d * Math.PI / 180;
-  const air = (a, b) => 12742 * Math.asin(Math.sqrt(Math.sin(rad(b.lat - a.lat) / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(rad(b.lon - a.lon) / 2) ** 2));
   const sample = c => c.filter((_, n) => n % Math.ceil(c.length / 12) === 0).map(([la, lo]) => [+la.toFixed(3), +lo.toFixed(3)]);
   const order = i => i.date + (i.time || '99');
   const chain = items.filter(i => i.date && i.lat != null && !i.parent_id).sort((a, b) => order(a).localeCompare(order(b)) || a.id - b.id);
@@ -112,7 +139,7 @@ async function routesOverview(db, env, items) {
   }
   const out = [];
   for (const [a, b, mode, type] of pairs) {
-    const leg = { from: { id: a.id, title: a.title }, to: { id: b.id, title: b.title }, type, mode, luftlinie_km: Math.round(air(a, b)) };
+    const leg = { from: { id: a.id, title: a.title }, to: { id: b.id, title: b.title }, type, mode, luftlinie_km: Math.round(air([a.lat, a.lon], [b.lat, b.lon])) };
     if (mode === 'auto' && pt(a) !== pt(b)) {
       const r = await routeData(db, env, pt(a), pt(b));
       if (r) {
@@ -121,7 +148,7 @@ async function routesOverview(db, env, items) {
     }
     if (mode === 'faehre') {
       const r = await ferryData(db, pt(a), pt(b));
-      if (r) Object.assign(leg, { linie: r.name, verlauf: sample(r.coords) });
+      if (r) leg.verlauf = sample(r.coords);
       else leg.hinweis = 'Keine Fährlinie in OpenStreetMap gefunden (oder Dienst überlastet), die Karte zeigt eine gerade Linie. Start und Ziel müssen nahe an den Häfen liegen.';
     }
     out.push(leg);

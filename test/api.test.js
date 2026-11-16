@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import { handleApi } from '../src/api.js';
+import { handleApi, ferryPath } from '../src/api.js';
 import { handleMcp } from '../src/mcp.js';
 
 // Tests gehen nie ins Netz: Ortssuche, Routen- und Fährdienst antworten als nicht erreichbar.
@@ -139,4 +139,14 @@ test('MCP: Reise anlegen, Eintrag anlegen und teilweise ändern, Viewer gesperrt
   assert.deepEqual([legs.length, legs[0].mode, legs[0].to.title, legs[0].luftlinie_km > 350], [1, 'faehre', 'Helsinki', true]);
   assert.equal((await tool('update_item', { key: t.adminLink, id: made.id, leg: 'rakete' })).error, true);
   assert.equal((await tool('update_item', { key: t.adminLink, id: made.id, leg: '' })).data.leg, null);
+});
+
+test('Fährverlauf: durchgehende Linie, zwei Teilstücke, nichts Passendes', () => {
+  const bergen = [60.39, 5.32], stavanger = [58.92, 5.58], hirtshals = [57.59, 9.96], kiel = [54.32, 10.14];
+  const direct = [hirtshals, [58.5, 8], bergen];                      // andersherum erfasst
+  const part1 = [bergen, [59.5, 5.2], stavanger], part2 = [hirtshals, [58, 8], stavanger];
+  const other = [bergen, [61, 5]];
+  assert.deepEqual(ferryPath([other, direct], bergen, hirtshals), [bergen, [58.5, 8], hirtshals]);
+  assert.deepEqual(ferryPath([other, part1, part2], bergen, hirtshals), [bergen, [59.5, 5.2], stavanger, stavanger, [58, 8], hirtshals]);
+  assert.equal(ferryPath([other, part1], bergen, kiel), null);
 });
