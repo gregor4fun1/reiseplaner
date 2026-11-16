@@ -17,7 +17,7 @@ await add({ kind: F, title: 'Abfahrt Wiener Neustadt', date: '2027-07-03', time:
   note: 'Rund 520 km bis Dresden über Brünn und Prag, etwa 6 Stunden. Vignette für Tschechien nötig.' });
 await add({ kind: U, title: 'Übernachtung Dresden', date: '2027-07-03', time: '15:00', lat: 51.050, lon: 13.737, place: 'Dresden',
   note: 'Zwischenstopp, damit die Fähre am nächsten Tag ohne Stress erreichbar ist. Abends Altstadt.' });
-await add({ kind: F, title: 'Nachtfähre Kiel → Göteborg', date: '2027-07-04', time: '18:45', lat: 54.318, lon: 10.140, place: 'Kiel, Schwedenkai',
+await add({ kind: F, leg: 'faehre', title: 'Nachtfähre Kiel → Göteborg', date: '2027-07-04', time: '18:45', lat: 54.318, lon: 10.140, place: 'Kiel, Schwedenkai',
   url: 'https://www.stenaline.de', note: 'Stena Line, Abfahrt etwa 18:45, Ankunft etwa 09:15. Ab Dresden 560 km: spätestens 09:00 losfahren, Einchecken etwa 2 Stunden vorher. Kabine früh buchen. Zeiten für 2027 prüfen.' });
 
 // ---- Schweden ----
@@ -69,7 +69,7 @@ await add({ kind: A, title: 'Pause in Geilo', date: '2027-07-21', time: '12:30',
 await add({ kind: U, title: 'Übernachtung Oslo', date: '2027-07-21', time: '17:00', lat: 59.911, lon: 10.757, place: 'Oslo' });
 await add({ kind: A, title: 'Oslo: Oper und Vigelandpark', date: '2027-07-22', time: '09:00', lat: 59.927, lon: 10.700, place: 'Vigelandpark, Oslo',
   note: 'Vormittag in der Stadt, bis 12:30 am Fährterminal sein.' });
-await add({ kind: F, title: 'Nachtfähre Oslo → Kiel', date: '2027-07-22', time: '14:00', lat: 59.910, lon: 10.700, place: 'Oslo, Hjortnes',
+await add({ kind: F, leg: 'faehre', title: 'Nachtfähre Oslo → Kiel', date: '2027-07-22', time: '14:00', lat: 59.910, lon: 10.700, place: 'Oslo, Hjortnes',
   url: 'https://www.colorline.de', note: 'Color Line, Abfahrt etwa 14:00, Ankunft in Kiel etwa 10:00. Kabine früh buchen. Zeiten für 2027 prüfen.' });
 await add({ kind: F, title: 'Ankunft Kiel, Fahrt nach Dresden', date: '2027-07-23', time: '10:00', lat: 54.316, lon: 10.147, place: 'Kiel, Norwegenkai', note: '560 km, etwa 6 Stunden.' });
 await add({ kind: U, title: 'Übernachtung Dresden (Rückweg)', date: '2027-07-23', time: '17:00', lat: 51.050, lon: 13.737, place: 'Dresden' });

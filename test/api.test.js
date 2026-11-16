@@ -121,11 +121,19 @@ test('MCP: Reise anlegen, Eintrag anlegen und teilweise ändern, Viewer gesperrt
     return { error: r.isError, data: JSON.parse(r.content[0].text) };
   };
   assert.equal((await rpc('initialize', { protocolVersion: '2025-06-18' })).protocolVersion, '2025-06-18');
-  assert.equal((await rpc('tools/list')).tools.length, 6);
+  assert.equal((await rpc('tools/list')).tools.length, 7);
   const { data: t } = await tool('create_trip', { name: 'Schweden' });
   const { data: made } = await tool('add_item', { key: t.adminLink, title: 'Stockholm', kind: 'aktivitaet', date: '2027-07-10' });
   await tool('update_item', { key: t.adminLink, id: made.id, note: 'Vasa-Museum' });
   const { data: trip } = await tool('get_trip', { key: t.viewerLink });
   assert.deepEqual([trip.items[0].title, trip.items[0].note, trip.items[0].author], ['Stockholm', 'Vasa-Museum', 'Claude']);
   assert.equal((await tool('add_item', { key: t.viewerLink, title: 'x', kind: 'fahrt' })).error, true);
+  // Bilder als Liste, Fähre als Weiterfahrt, Streckenübersicht
+  const pics = await tool('update_item', { key: t.adminLink, id: made.id, images: ['https://x.test/a.jpg'], lat: 59.33, lon: 18.07, leg: 'faehre' });
+  assert.equal(pics.data.images, 'https://x.test/a.jpg');
+  await tool('add_item', { key: t.adminLink, title: 'Helsinki', kind: 'aktivitaet', date: '2027-07-11', lat: 60.17, lon: 24.94 });
+  const { data: legs } = await tool('get_routes', { key: t.viewerLink });
+  assert.deepEqual([legs.length, legs[0].mode, legs[0].to.title, legs[0].luftlinie_km > 350], [1, 'faehre', 'Helsinki', true]);
+  assert.equal((await tool('update_item', { key: t.adminLink, id: made.id, leg: 'rakete' })).error, true);
+  assert.equal((await tool('update_item', { key: t.adminLink, id: made.id, leg: '' })).data.leg, null);
 });

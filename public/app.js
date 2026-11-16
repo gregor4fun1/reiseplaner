@@ -7,7 +7,8 @@ const KINDS = {
   fahrt: ['Fahrt', '#0071e3', 'M4 11h12.2l-4.6-4.6L13 5l7 7-7 7-1.4-1.4 4.6-4.6H4z'],
   sonstiges: ['Sonstiges', '#a05a00', 'M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.500a2.500 2.500 0 1 1 0-5 2.500 2.500 0 0 1 0 5z'],
 };
-const FORM_FIELDS = ['title', 'kind', 'date', 'end_date', 'time', 'note', 'url', 'images'];
+const LEGS = { faehre: 'Fähre', flug: 'Flug', zug: 'Zug' };
+const FORM_FIELDS = ['title', 'kind', 'date', 'end_date', 'time', 'note', 'url', 'images', 'leg'];
 const key = location.hash.slice(1);
 const saved = () => { try { return JSON.parse(localStorage.trips || '{}'); } catch { return {}; } };
 const fail = x => alert(x.status ? x.message : 'Keine Verbindung. Bitte später noch einmal versuchen.');
@@ -175,7 +176,9 @@ async function drawRoute(chain, spokes) {
   const g = ++gen;
   const main = chain.slice(1).map((b, n) => [chain[n], b]).filter(([a, b]) => a.lat !== b.lat || a.lon !== b.lon);
   const all = [...main, ...spokes];
-  const legs = await Promise.all(all.map(([a, b]) => route(a, b)));
+  // Fähre, Flug und Zug bekommen keine Autoroute.
+  const other = n => n < main.length && all[n][0].leg;
+  const legs = await Promise.all(all.map(([a, b], n) => (other(n) ? null : route(a, b))));
   if (g !== gen) return; // inzwischen neu gezeichnet
   all.forEach(([a, b], n) => {
     const r = legs[n], spoke = n >= main.length;
@@ -183,7 +186,12 @@ async function drawRoute(chain, spokes) {
     L.polyline(r ? r.coords : [[a.lat, a.lon], [b.lat, b.lon]], { className: spoke ? 'route spoke' : 'route', weight: spoke ? 3 : 5, dashArray: r ? null : '6 8', interactive: false })
       .addTo(layer).bringToBack();
     const out = document.querySelector(`[data-leg="${spoke ? b.id : a.id}"]`);
-    if (out && r) out.textContent = spoke ? `${Math.round(r.km)} km · ${fmtDur(r.min)} ab ${a.title}` : `↓ ${Math.round(r.km)} km · ${fmtDur(r.min)} bis ${b.title}`;
+    if (!out) return;
+    if (other(n)) {
+      // Dauer aus Abfahrt und Ankunft, wenn beide eine Uhrzeit haben.
+      const min = a.time && b.time ? (Date.parse(`${b.date}T${b.time}Z`) - Date.parse(`${a.date}T${a.time}Z`)) / 6e4 : 0;
+      out.textContent = `↓ ${LEGS[a.leg]}${min > 0 ? ' · ' + fmtDur(min) : ''} bis ${b.title}`;
+    } else if (r) out.textContent = spoke ? `${Math.round(r.km)} km · ${fmtDur(r.min)} ab ${a.title}` : `↓ ${Math.round(r.km)} km · ${fmtDur(r.min)} bis ${b.title}`;
   });
 }
 
@@ -204,6 +212,7 @@ function showParent() {
   f.elements.parent_id.replaceChildren(el('option', { value: '', textContent: 'Kein Aufenthalt' }), ...stays.map(s => el('option', { value: s.id, textContent: s.title })));
   f.elements.parent_id.value = draft.parent_id ?? '';
   $('#parentRow').hidden = !stays.length || f.elements.kind.value === 'unterkunft';
+  $('#legRow').hidden = !!f.elements.parent_id.value; // Tagesausflüge fahren immer ab der Hütte
 }
 
 function showDraft() {
@@ -300,6 +309,7 @@ function openTrip() {
   $('#share').onclick = openShare;
   $('#itemForm').onsubmit = saveItem;
   $('#itemForm').elements.kind.onchange = showParent;
+  $('#itemForm').elements.parent_id.onchange = () => { $('#legRow').hidden = !!$('#itemForm').elements.parent_id.value; };
   $('#itemClose').onclick = () => $('#itemDlg').close();
   $('#del').onclick = deleteItem;
   $('#search').onclick = search;

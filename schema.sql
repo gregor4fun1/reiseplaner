@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS items (
   url TEXT,
   author TEXT,
   images TEXT,        -- Bild-Links, einer pro Zeile
-  parent_id INTEGER   -- Aufenthalt, zu dem ein Tagesausflug gehört
+  parent_id INTEGER,  -- Aufenthalt, zu dem ein Tagesausflug gehört
+  leg TEXT            -- Weiterfahrt zur nächsten Station: faehre, flug, zug; leer = Auto
 );
 CREATE INDEX IF NOT EXISTS items_trip ON items(trip_id);
 

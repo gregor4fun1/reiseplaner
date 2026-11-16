@@ -84,6 +84,14 @@
         <p class="foot">Ohne Datum ist der Eintrag eine Idee.</p>
         <div class="group">
           <p class="rowText"><span>Ort</span><strong id="placeInfo"></strong></p>
+          <label id="legRow"><span>Weiter mit</span>
+            <select name="leg">
+              <option value="">Auto (Straßenroute)</option>
+              <option value="faehre">Fähre</option>
+              <option value="flug">Flug</option>
+              <option value="zug">Zug</option>
+            </select>
+          </label>
           <label class="placeTools"><span>Suchen</span><input name="q" type="search" maxlength="200" placeholder="Ort oder Adresse"></label>
         </div>
         <div class="placeTools actions">

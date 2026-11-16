@@ -1,5 +1,6 @@
 const KINDS = ['unterkunft', 'aktivitaet', 'fahrt', 'sonstiges'];
-const FIELDS = ['title', 'kind', 'place', 'lat', 'lon', 'date', 'end_date', 'time', 'note', 'url', 'author', 'images', 'parent_id'];
+const FIELDS = ['title', 'kind', 'place', 'lat', 'lon', 'date', 'end_date', 'time', 'note', 'url', 'author', 'images', 'parent_id', 'leg'];
+const LEGS = ['faehre', 'flug', 'zug']; // Weiterfahrt zur nächsten Station, sonst Auto
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME = /^\d{2}:\d{2}$/;
 const POINT = /^-?\d{1,3}(\.\d+)?,-?\d{1,3}(\.\d+)?$/;
@@ -18,7 +19,7 @@ function cleanItem(b) {
     title: s(b.title, 200), kind: b.kind, place: s(b.place, 200), lat: b.lat ?? null, lon: b.lon ?? null,
     date: s(b.date, 10), end_date: s(b.end_date, 10), time: s(b.time, 5),
     note: s(b.note, 5000), url: s(b.url, 2000), author: s(b.author, 50),
-    images: s(Array.isArray(b.images) ? b.images.join('\n') : b.images, 3000), parent_id: b.parent_id ?? null,
+    images: s(Array.isArray(b.images) ? b.images.join('\n') : b.images, 3000), parent_id: b.parent_id ?? null, leg: s(b.leg, 10),
   };
   if (Object.values(it).includes(undefined)) return 'Ein Feld ist zu lang oder hat den falschen Typ';
   if (!it.title) return 'Titel fehlt';
@@ -36,6 +37,7 @@ function cleanItem(b) {
     if (list.length > 6 || list.some(u => !/^https?:\/\/\S+$/i.test(u))) return 'Bilder: höchstens 6 Links, je einer pro Zeile, mit http:// oder https://';
     it.images = list.join('\n') || null;
   }
+  if (it.leg && !LEGS.includes(it.leg)) return 'Weiterfahrt muss faehre, flug oder zug sein (leer = Auto)';
   if (it.parent_id !== null && !Number.isInteger(it.parent_id)) return 'Ungültiger Aufenthalt';
   if (it.parent_id !== null && it.kind === 'unterkunft') return 'Ein Aufenthalt kann nicht zu einem anderen Aufenthalt gehören';
   return it;
@@ -55,25 +57,52 @@ async function geocode(q) {
   }));
 }
 
-// Antwort null heißt: keine Straßenroute, die Oberfläche zeichnet eine gerade Linie.
-async function route(db, env, from, to) {
-  if (!POINT.test(from || '') || !POINT.test(to || '')) return err(400, 'Ungültige Punkte');
+// null heißt: keine Straßenroute, die Oberfläche zeichnet eine gerade Linie.
+async function routeData(db, env, from, to) {
   const k = `${from};${to}`;
   const hit = await db.prepare('SELECT json FROM routes WHERE k = ?').bind(k).first();
-  if (hit) return json(JSON.parse(hit.json));
-  if (!env.ORS_KEY) return json(null);
+  if (hit) return JSON.parse(hit.json);
+  if (!env.ORS_KEY) return null;
   const flip = p => p.split(',').reverse().join(','); // OpenRouteService erwartet lon,lat
   const r = await fetch(`https://api.openrouteservice.org/v2/directions/driving-car?api_key=${env.ORS_KEY}&start=${flip(from)}&end=${flip(to)}`);
-  if (!r.ok) return json(null);
+  if (!r.ok) return null;
   const f = (await r.json()).features?.[0];
-  if (!f) return json(null);
+  if (!f) return null;
   const out = {
     coords: f.geometry.coordinates.map(([lon, lat]) => [lat, lon]),
     km: f.properties.summary.distance / 1000,
     min: f.properties.summary.duration / 60,
   };
   await db.prepare('INSERT OR REPLACE INTO routes (k, json) VALUES (?, ?)').bind(k, JSON.stringify(out)).run();
-  return json(out);
+  return out;
+}
+
+// Übersicht aller Strecken einer Reise, damit man sie prüfen kann (vor allem per MCP).
+// Reihenfolge wie in der Oberfläche: Stationen nach Datum und Uhrzeit, dazu Tagesausflüge ab ihrem Aufenthalt.
+async function routesOverview(db, env, items) {
+  const pt = i => `${i.lat.toFixed(5)},${i.lon.toFixed(5)}`;
+  const rad = d => d * Math.PI / 180;
+  const air = (a, b) => 12742 * Math.asin(Math.sqrt(Math.sin(rad(b.lat - a.lat) / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(rad(b.lon - a.lon) / 2) ** 2));
+  const order = i => i.date + (i.time || '99');
+  const chain = items.filter(i => i.date && i.lat != null && !i.parent_id).sort((a, b) => order(a).localeCompare(order(b)) || a.id - b.id);
+  const pairs = chain.slice(1).map((b, n) => [chain[n], b, chain[n].leg || 'auto', 'station']);
+  for (const i of items) {
+    const stay = i.parent_id && items.find(p => p.id === i.parent_id);
+    if (stay && stay.lat != null && i.lat != null) pairs.push([stay, i, 'auto', 'tagesausflug']);
+  }
+  const out = [];
+  for (const [a, b, mode, type] of pairs) {
+    const leg = { from: { id: a.id, title: a.title }, to: { id: b.id, title: b.title }, type, mode, luftlinie_km: Math.round(air(a, b)) };
+    if (mode === 'auto' && pt(a) !== pt(b)) {
+      const r = await routeData(db, env, pt(a), pt(b));
+      if (r) {
+        const step = Math.ceil(r.coords.length / 12);
+        Object.assign(leg, { km: Math.round(r.km), min: Math.round(r.min), verlauf: r.coords.filter((_, n) => n % step === 0).map(([la, lo]) => [+la.toFixed(3), +lo.toFixed(3)]) });
+      } else leg.hinweis = 'Keine Straßenroute gefunden, die Karte zeigt eine gerade Linie.';
+    }
+    out.push(leg);
+  }
+  return out;
 }
 
 export async function handleApi(request, env) {
@@ -123,7 +152,15 @@ export async function handleApi(request, env) {
     return json({ adminKey, viewKey });
   }
   if (sub === 'geocode' && m === 'GET') return geocode(url.searchParams.get('q'));
-  if (sub === 'route' && m === 'GET') return route(db, env, url.searchParams.get('from'), url.searchParams.get('to'));
+  if (sub === 'route' && m === 'GET') {
+    const from = url.searchParams.get('from') || '', to = url.searchParams.get('to') || '';
+    if (!POINT.test(from) || !POINT.test(to)) return err(400, 'Ungültige Punkte');
+    return json(await routeData(db, env, from, to));
+  }
+  if (sub === 'routes' && m === 'GET') {
+    const { results } = await db.prepare(`SELECT id, ${FIELDS.join(', ')} FROM items WHERE trip_id = ?`).bind(trip.id).all();
+    return json(await routesOverview(db, env, results));
+  }
 
   // Tagesausflüge bleiben erhalten, wenn ihr Aufenthalt gelöscht wird oder keiner mehr ist.
   const orphan = stayId => db.prepare('UPDATE items SET parent_id = NULL WHERE parent_id = ? AND trip_id = ?').bind(stayId, trip.id).run();

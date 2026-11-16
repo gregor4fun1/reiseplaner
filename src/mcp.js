@@ -5,7 +5,8 @@ const itemProps = {
   title: { type: 'string' },
   kind: { type: 'string', enum: ['unterkunft', 'aktivitaet', 'fahrt', 'sonstiges'], description: 'unterkunft = Aufenthalt über mehrere Tage (Hütte, Fahrziel) mit date und end_date' },
   parent_id: { type: 'number', description: 'ID eines Aufenthalts (kind unterkunft). Macht den Eintrag zum Tagesausflug von dort.' },
-  images: { type: 'string', description: 'Bild-Links (http/https), einer pro Zeile, höchstens 6' },
+  images: { type: 'array', items: { type: 'string' }, maxItems: 6, description: 'Bild-Links (http/https), höchstens 6. Das erste Bild wird der Marker auf der Karte.' },
+  leg: { type: 'string', enum: ['faehre', 'flug', 'zug', ''], description: 'Womit es von diesem Eintrag zur nächsten Station weitergeht. Leer = Auto (Straßenroute). Bei faehre, flug, zug wird keine Autoroute berechnet.' },
   place: { type: 'string', description: 'Ortsname' },
   lat: { type: 'number' }, lon: { type: 'number' },
   date: { type: 'string', description: 'YYYY-MM-DD. Ohne Datum ist der Eintrag eine Idee.' },
@@ -20,6 +21,7 @@ const TOOLS = [
   tool('add_item', 'Legt einen Eintrag an (Ort, Aktivität, Unterkunft, Fahrt oder Idee).', { key, ...itemProps }, ['key', 'title', 'kind']),
   tool('update_item', 'Ändert die angegebenen Felder eines Eintrags.', { key, id: { type: 'number' }, ...itemProps }, ['key', 'id']),
   tool('delete_item', 'Löscht einen Eintrag endgültig.', { key, id: { type: 'number' } }, ['key', 'id']),
+  tool('get_routes', 'Listet alle Strecken der Reise in Reihenfolge: von, nach, Verkehrsmittel, Kilometer, Fahrzeit und grober Verlauf (Stützpunkte lat/lon) der berechneten Straßenroute. Zum Prüfen, ob eine Strecke plausibel ist. Korrigieren: mit update_item am Start-Eintrag leg setzen (z. B. faehre) oder Ort, Datum und Uhrzeit ändern.', { key }, ['key']),
   tool('search_place', 'Sucht einen Ort und gibt Namen mit Koordinaten zurück.', { key, query: { type: 'string' } }, ['key', 'query']),
 ];
 
@@ -45,6 +47,7 @@ async function call(env, origin, name, a = {}) {
       if (!old) return { ok: false, data: { error: 'Eintrag nicht gefunden' } };
       return api('PUT', `${k}/items/${id}`, { ...old, ...fields });
     }
+    case 'get_routes': return api('GET', `${k}/routes`);
     case 'delete_item': return api('DELETE', `${k}/items/${Number(id)}`);
     case 'search_place': return api('GET', `${k}/geocode?q=${encodeURIComponent(a.query || '')}`);
     default: return { ok: false, data: { error: 'Unbekanntes Werkzeug' } };
