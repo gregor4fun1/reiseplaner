@@ -11,7 +11,14 @@ const LEGS = { faehre: 'Fähre', flug: 'Flug', zug: 'Zug' };
 const FORM_FIELDS = ['title', 'kind', 'date', 'end_date', 'time', 'note', 'url', 'images', 'leg'];
 const key = location.hash.slice(1);
 const saved = () => { try { return JSON.parse(localStorage.trips || '{}'); } catch { return {}; } };
-const fail = x => alert(x.status ? x.message : 'Keine Verbindung. Bitte später noch einmal versuchen.');
+const msg = x => (x.status ? x.message : 'Keine Verbindung. Bitte später noch einmal versuchen.');
+// Knopf während einer Anfrage sperren und beschriften, damit sichtbar ist, dass etwas passiert.
+async function busy(btn, label, fn) {
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = label;
+  try { return await fn(); } finally { btn.disabled = false; btn.textContent = old; }
+}
+const fail = x => alert(msg(x));
 
 addEventListener('hashchange', () => location.reload());
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
@@ -33,7 +40,7 @@ function start() {
   $('#create').onsubmit = async e => {
     e.preventDefault();
     try {
-      const t = await api('POST', '', { name: new FormData(e.target).get('name') });
+      const t = await busy(e.submitter, 'Wird angelegt …', () => api('POST', '', { name: new FormData(e.target).get('name') }));
       sessionStorage.fresh = '1';
       location.hash = t.adminKey;
     } catch (x) { fail(x); }
@@ -165,9 +172,9 @@ function render() {
     located.filter(i => parentOf(i)?.lat != null).map(i => [parentOf(i), i]));
 }
 
-function route(a, b) {
-  const p = i => `${i.lat.toFixed(5)},${i.lon.toFixed(5)}`, k = `${p(a)};${p(b)}`;
-  if (!routes.has(k)) routes.set(k, fetch(`/api/trips/${key}/route?from=${p(a)}&to=${p(b)}`).then(r => (r.ok ? r.json() : null)).catch(() => null));
+function route(a, b, mode = '') {
+  const p = i => `${i.lat.toFixed(5)},${i.lon.toFixed(5)}`, k = `${mode}${p(a)};${p(b)}`;
+  if (!routes.has(k)) routes.set(k, fetch(`/api/trips/${key}/route?from=${p(a)}&to=${p(b)}&mode=${mode}`).then(r => (r.ok ? r.json() : null)).catch(() => null));
   return routes.get(k);
 }
 
@@ -176,14 +183,14 @@ async function drawRoute(chain, spokes) {
   const g = ++gen;
   const main = chain.slice(1).map((b, n) => [chain[n], b]).filter(([a, b]) => a.lat !== b.lat || a.lon !== b.lon);
   const all = [...main, ...spokes];
-  // Fähre, Flug und Zug bekommen keine Autoroute.
+  // Fähre, Flug und Zug bekommen keine Autoroute. Fähren folgen der Fährlinie aus OpenStreetMap, wenn es eine gibt.
   const other = n => n < main.length && all[n][0].leg;
-  const legs = await Promise.all(all.map(([a, b], n) => (other(n) ? null : route(a, b))));
+  const legs = await Promise.all(all.map(([a, b], n) => (other(n) === 'faehre' ? route(a, b, 'faehre') : other(n) ? null : route(a, b))));
   if (g !== gen) return; // inzwischen neu gezeichnet
   all.forEach(([a, b], n) => {
     const r = legs[n], spoke = n >= main.length;
-    // Gestrichelte gerade Linie, wenn es keine Straßenroute gibt.
-    L.polyline(r ? r.coords : [[a.lat, a.lon], [b.lat, b.lon]], { className: spoke ? 'route spoke' : 'route', weight: spoke ? 3 : 5, dashArray: r ? null : '6 8', interactive: false })
+    // Gestrichelt: Fähre, Flug, Zug oder keine Straßenroute gefunden.
+    L.polyline(r ? r.coords : [[a.lat, a.lon], [b.lat, b.lon]], { className: spoke ? 'route spoke' : 'route', weight: spoke ? 3 : 5, dashArray: r && !other(n) ? null : '6 8', interactive: false })
       .addTo(layer).bringToBack();
     const out = document.querySelector(`[data-leg="${spoke ? b.id : a.id}"]`);
     if (!out) return;
@@ -227,6 +234,7 @@ function showDraft() {
   $('#itemBy').textContent = draft.author ? `Eingetragen von ${draft.author}` : '';
   $('#del').hidden = !draft.id;
   $('#results').replaceChildren();
+  $('#itemErr').hidden = true;
   showParent();
   showPlace();
   $('#itemDlg').showModal();
@@ -242,7 +250,7 @@ async function search() {
   const q = $('#itemForm').elements.q.value.trim();
   if (!q) return;
   try {
-    const found = await api('GET', `/${key}/geocode?q=${encodeURIComponent(q)}`);
+    const found = await busy($('#search'), 'Sucht …', () => api('GET', `/${key}/geocode?q=${encodeURIComponent(q)}`));
     $('#results').replaceChildren(...found.map(p => el('li', {}, el('button', {
       type: 'button', className: 'plain', textContent: p.name,
       onclick: () => { Object.assign(draft, { lat: p.lat, lon: p.lon, place: p.name.slice(0, 200) }); $('#results').replaceChildren(); showPlace(); },
@@ -262,10 +270,15 @@ async function saveItem(e) {
   readForm();
   const body = { ...draft, author: draft.author || me() || null };
   try {
-    await api(draft.id ? 'PUT' : 'POST', `/${key}/items${draft.id ? '/' + draft.id : ''}`, body);
+    await busy($('#save'), 'Sichert …', () => api(draft.id ? 'PUT' : 'POST', `/${key}/items${draft.id ? '/' + draft.id : ''}`, body));
     $('#itemDlg').close();
     load();
-  } catch (x) { fail(x); }
+  } catch (x) {
+    // Fehler im Formular zeigen, nicht als Systemmeldung.
+    $('#itemErr').textContent = msg(x);
+    $('#itemErr').hidden = false;
+    $('#itemErr').scrollIntoView({ block: 'nearest' });
+  }
 }
 
 async function deleteItem() {
@@ -336,6 +349,7 @@ function openTrip() {
   addEventListener('online', net); addEventListener('offline', net); net();
 
   setView('map');
+  $('#days').replaceChildren(el('p', { className: 'foot', textContent: 'Reise wird geladen …' }));
   load().then(() => {
     if (!trip) return;
     if (isAdmin()) me();

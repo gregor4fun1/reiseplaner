@@ -28,7 +28,7 @@ function cleanItem(b) {
   if (it.lat !== null && !(typeof it.lat === 'number' && typeof it.lon === 'number' && Math.abs(it.lat) <= 90 && Math.abs(it.lon) <= 180))
     return 'Ungültige Koordinaten';
   if (it.date && !DATE.test(it.date)) return 'Ungültiges Datum';
-  if (it.end_date && (!it.date || !DATE.test(it.end_date) || it.end_date < it.date)) return 'Ungültiges Enddatum';
+  if (it.end_date && (!it.date || !DATE.test(it.end_date) || it.end_date < it.date)) return 'Das Bis-Datum braucht ein Von-Datum und darf nicht davor liegen';
   if (it.time && (!it.date || !TIME.test(it.time))) return 'Uhrzeit braucht ein Datum im Format HH:MM';
   // Nur http(s), sonst könnte ein Link Skript ausführen.
   if (it.url && !/^https?:\/\//i.test(it.url)) return 'Link muss mit http:// oder https:// beginnen';
@@ -77,12 +77,32 @@ async function routeData(db, env, from, to) {
   return out;
 }
 
+// Verlauf einer Fährlinie aus OpenStreetMap: ein Weg mit route=ferry, der an beiden Häfen (8 km Umkreis) vorbeiführt.
+// null heißt: nichts gefunden oder Dienst überlastet, die Oberfläche zeichnet eine gerade Linie und fragt später wieder.
+// shortcut: findet nur Linien, die in OpenStreetMap als ein einziger Weg erfasst sind; für zusammengesetzte Linien Relationen auswerten.
+async function ferryData(db, from, to) {
+  const k = `faehre:${from};${to}`;
+  const hit = await db.prepare('SELECT json FROM routes WHERE k = ?').bind(k).first();
+  if (hit) return JSON.parse(hit.json);
+  const q = `[out:json][timeout:20];way[route=ferry](around:8000,${from})->.a;way.a(around:8000,${to});out geom;`;
+  const r = await fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': 'reiseplaner' }, body: 'data=' + encodeURIComponent(q),
+  }).catch(() => null);
+  if (!r?.ok) return null;
+  const way = (await r.json().catch(() => null))?.elements?.[0];
+  if (!way?.geometry?.length) return null;
+  const out = { coords: way.geometry.map(p => [p.lat, p.lon]), name: way.tags?.name || null };
+  await db.prepare('INSERT OR REPLACE INTO routes (k, json) VALUES (?, ?)').bind(k, JSON.stringify(out)).run();
+  return out;
+}
+
 // Übersicht aller Strecken einer Reise, damit man sie prüfen kann (vor allem per MCP).
 // Reihenfolge wie in der Oberfläche: Stationen nach Datum und Uhrzeit, dazu Tagesausflüge ab ihrem Aufenthalt.
 async function routesOverview(db, env, items) {
   const pt = i => `${i.lat.toFixed(5)},${i.lon.toFixed(5)}`;
   const rad = d => d * Math.PI / 180;
   const air = (a, b) => 12742 * Math.asin(Math.sqrt(Math.sin(rad(b.lat - a.lat) / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(rad(b.lon - a.lon) / 2) ** 2));
+  const sample = c => c.filter((_, n) => n % Math.ceil(c.length / 12) === 0).map(([la, lo]) => [+la.toFixed(3), +lo.toFixed(3)]);
   const order = i => i.date + (i.time || '99');
   const chain = items.filter(i => i.date && i.lat != null && !i.parent_id).sort((a, b) => order(a).localeCompare(order(b)) || a.id - b.id);
   const pairs = chain.slice(1).map((b, n) => [chain[n], b, chain[n].leg || 'auto', 'station']);
@@ -96,9 +116,13 @@ async function routesOverview(db, env, items) {
     if (mode === 'auto' && pt(a) !== pt(b)) {
       const r = await routeData(db, env, pt(a), pt(b));
       if (r) {
-        const step = Math.ceil(r.coords.length / 12);
-        Object.assign(leg, { km: Math.round(r.km), min: Math.round(r.min), verlauf: r.coords.filter((_, n) => n % step === 0).map(([la, lo]) => [+la.toFixed(3), +lo.toFixed(3)]) });
+        Object.assign(leg, { km: Math.round(r.km), min: Math.round(r.min), verlauf: sample(r.coords) });
       } else leg.hinweis = 'Keine Straßenroute gefunden, die Karte zeigt eine gerade Linie.';
+    }
+    if (mode === 'faehre') {
+      const r = await ferryData(db, pt(a), pt(b));
+      if (r) Object.assign(leg, { linie: r.name, verlauf: sample(r.coords) });
+      else leg.hinweis = 'Keine Fährlinie in OpenStreetMap gefunden (oder Dienst überlastet), die Karte zeigt eine gerade Linie. Start und Ziel müssen nahe an den Häfen liegen.';
     }
     out.push(leg);
   }
@@ -155,7 +179,7 @@ export async function handleApi(request, env) {
   if (sub === 'route' && m === 'GET') {
     const from = url.searchParams.get('from') || '', to = url.searchParams.get('to') || '';
     if (!POINT.test(from) || !POINT.test(to)) return err(400, 'Ungültige Punkte');
-    return json(await routeData(db, env, from, to));
+    return json(url.searchParams.get('mode') === 'faehre' ? await ferryData(db, from, to) : await routeData(db, env, from, to));
   }
   if (sub === 'routes' && m === 'GET') {
     const { results } = await db.prepare(`SELECT id, ${FIELDS.join(', ')} FROM items WHERE trip_id = ?`).bind(trip.id).all();

@@ -5,6 +5,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { handleApi } from '../src/api.js';
 import { handleMcp } from '../src/mcp.js';
 
+// Tests gehen nie ins Netz: Ortssuche, Routen- und Fährdienst antworten als nicht erreichbar.
+globalThis.fetch = async () => new Response('', { status: 503 });
+
 // Kleinster D1-Ersatz über node:sqlite, nur die Methoden, die der Code nutzt.
 function env() {
   const db = new DatabaseSync(':memory:');
