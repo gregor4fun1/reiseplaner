@@ -57,22 +57,26 @@ async function geocode(q) {
   }));
 }
 
-// null heißt: keine Straßenroute, die Oberfläche zeichnet eine gerade Linie.
+// Straßenroute zwischen zwei Punkten "lat,lon". null heißt: keine Route, die Oberfläche zeichnet eine gerade Linie.
+// Zuerst OpenRouteService; ist dessen Kontingent aufgebraucht oder findet er nichts, der öffentliche OSRM-Server.
+// shortcut: OSRM ist ein Demo-Server ohne Zusage; bei vielen Nutzern einen eigenen Routendienst oder Tarif nehmen.
 async function routeData(db, env, from, to) {
   const k = `${from};${to}`;
   const hit = await db.prepare('SELECT json FROM routes WHERE k = ?').bind(k).first();
   if (hit) return JSON.parse(hit.json);
-  if (!env.ORS_KEY) return null;
-  const flip = p => p.split(',').reverse().join(','); // OpenRouteService erwartet lon,lat
-  const r = await fetch(`https://api.openrouteservice.org/v2/directions/driving-car?api_key=${env.ORS_KEY}&start=${flip(from)}&end=${flip(to)}`);
-  if (!r.ok) return null;
-  const f = (await r.json()).features?.[0];
-  if (!f) return null;
-  const out = {
-    coords: f.geometry.coordinates.map(([lon, lat]) => [lat, lon]),
-    km: f.properties.summary.distance / 1000,
-    min: f.properties.summary.duration / 60,
-  };
+  const flip = p => p.split(',').reverse().join(','); // beide Dienste erwarten lon,lat
+  const get = async url => { const r = await fetch(url, { headers: { 'user-agent': 'reiseplaner' } }).catch(() => null); return r?.ok ? r.json().catch(() => null) : null; };
+  let line = null, m = 0, sec = 0;
+  if (env.ORS_KEY) {
+    const f = (await get(`https://api.openrouteservice.org/v2/directions/driving-car?api_key=${env.ORS_KEY}&start=${flip(from)}&end=${flip(to)}`))?.features?.[0];
+    if (f) [line, m, sec] = [f.geometry.coordinates, f.properties.summary.distance, f.properties.summary.duration];
+  }
+  if (!line) {
+    const r = (await get(`https://router.project-osrm.org/route/v1/driving/${flip(from)};${flip(to)}?overview=full&geometries=geojson`))?.routes?.[0];
+    if (r) [line, m, sec] = [r.geometry.coordinates, r.distance, r.duration];
+  }
+  if (!line) return null;
+  const out = { coords: line.map(([lon, lat]) => [lat, lon]), km: m / 1000, min: sec / 60 };
   await db.prepare('INSERT OR REPLACE INTO routes (k, json) VALUES (?, ?)').bind(k, JSON.stringify(out)).run();
   return out;
 }
