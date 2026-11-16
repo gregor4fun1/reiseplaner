@@ -1,0 +1,8 @@
+name = "reiseplaner"
+compatibility_date = "2026-06-01"
+pages_build_output_dir = "public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "reiseplaner"
+database_id = "1a9c5196-0bc9-4134-a7fa-d4a552a5e079"

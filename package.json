@@ -1,0 +1,15 @@
+{
+  "name": "reiseplaner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "db:local": "wrangler d1 execute reiseplaner --local --file=schema.sql",
+    "db:remote": "wrangler d1 execute reiseplaner --remote --file=schema.sql",
+    "dev": "wrangler pages dev --port 8788",
+    "deploy": "wrangler pages deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

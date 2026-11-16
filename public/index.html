@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<title>Reiseplaner</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg">
+<link rel="apple-touch-icon" href="/icon.svg">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body data-view="map">
+
+<main id="start" hidden>
+  <h1>Reiseplaner</h1>
+  <p id="missing" class="notice" hidden>Diese Reise gibt es nicht mehr. Vielleicht wurde der Link erneuert.</p>
+  <section id="mineBox" hidden>
+    <h2>Meine Reisen</h2>
+    <ul id="mine" class="group"></ul>
+  </section>
+  <form id="create">
+    <h2>Neue Reise</h2>
+    <div class="group"><label><span>Name</span><input name="name" required maxlength="100" placeholder="Norwegen 2027"></label></div>
+    <button class="primary wide">Reise anlegen</button>
+  </form>
+  <form id="open">
+    <h2>Reise öffnen</h2>
+    <div class="group"><label><span>Link</span><input name="link" required placeholder="Link einfügen"></label></div>
+    <button class="wide">Öffnen</button>
+  </form>
+</main>
+
+<div id="trip" hidden>
+  <div id="map"></div>
+  <header class="glass">
+    <h1 id="name"></h1>
+    <button type="button" id="share" class="plain">Teilen</button>
+    <button type="button" id="add" class="primary">Hinzufügen</button>
+  </header>
+  <nav class="seg tabs glass" aria-label="Ansicht">
+    <button type="button" data-view="map">Karte</button>
+    <button type="button" data-view="plan">Plan</button>
+  </nav>
+  <p id="offline" class="banner glass">Keine Verbindung. Du siehst den zuletzt geladenen Stand.</p>
+  <p id="hint" class="banner glass" hidden>Tippe auf die Karte, um den Ort zu setzen. <button type="button" id="pickCancel" class="plain">Abbrechen</button></p>
+  <aside id="plan" class="glass">
+    <h2>Plan</h2>
+    <div id="days"></div>
+    <h2>Ideen</h2>
+    <div id="ideas"></div>
+  </aside>
+</div>
+
+<dialog id="itemDlg" aria-labelledby="itemHead">
+  <form id="itemForm">
+    <div class="sheetBar">
+      <button type="button" id="itemClose" class="plain">Schließen</button>
+      <h2 id="itemHead">Eintrag</h2>
+      <button id="save" class="primary">Sichern</button>
+    </div>
+    <div class="sheetBody">
+      <div id="itemImgs"></div>
+      <fieldset name="fields">
+        <div class="group">
+          <label><span>Titel</span><input name="title" required maxlength="200"></label>
+          <label><span>Art</span>
+            <select name="kind">
+              <option value="unterkunft">Aufenthalt (Hütte, Fahrziel)</option>
+              <option value="aktivitaet">Aktivität</option>
+              <option value="fahrt">Fahrt</option>
+              <option value="sonstiges">Sonstiges</option>
+            </select>
+          </label>
+          <label id="parentRow"><span>Ausflug ab</span><select name="parent_id"></select></label>
+        </div>
+        <div class="group">
+          <label><span>Von</span><input name="date" type="date"></label>
+          <label><span>Bis</span><input name="end_date" type="date"></label>
+          <label><span>Uhrzeit</span><input name="time" type="time"></label>
+        </div>
+        <p class="foot">Ohne Datum ist der Eintrag eine Idee.</p>
+        <div class="group">
+          <p class="rowText"><span>Ort</span><strong id="placeInfo"></strong></p>
+          <label class="placeTools"><span>Suchen</span><input name="q" type="search" maxlength="200" placeholder="Ort oder Adresse"></label>
+        </div>
+        <div class="placeTools actions">
+          <button type="button" id="search">Suchen</button>
+          <button type="button" id="pick">Auf Karte wählen</button>
+          <button type="button" id="noPlace">Ort entfernen</button>
+        </div>
+        <ul id="results" class="group"></ul>
+        <div class="group">
+          <label class="stack"><span>Notiz</span><textarea name="note" rows="3" maxlength="5000"></textarea></label>
+          <label><span>Website</span><input name="url" type="url" maxlength="2000" placeholder="https://"></label>
+          <label class="stack"><span>Bilder (ein Link pro Zeile, höchstens 6)</span><textarea name="images" rows="2" maxlength="3000" placeholder="https://"></textarea></label>
+        </div>
+      </fieldset>
+      <p><a id="urlOpen" target="_blank" rel="noopener noreferrer">Website öffnen</a></p>
+      <p id="itemBy" class="foot"></p>
+      <button type="button" id="del" class="danger wide">Eintrag löschen</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="shareDlg" aria-labelledby="shareHead">
+  <div class="sheetBar">
+    <span></span>
+    <h2 id="shareHead">Teilen</h2>
+    <button type="button" id="shareClose" class="primary">Fertig</button>
+  </div>
+  <div class="sheetBody">
+    <div class="adminOnly">
+      <p class="head">Admin-Link: darf alles bearbeiten</p>
+      <div class="group copy"><input id="adminLink" readonly aria-label="Admin-Link"><button type="button" class="plain" data-copy="adminLink">Kopieren</button></div>
+    </div>
+    <p class="head">Viewer-Link: nur ansehen</p>
+    <div class="group copy"><input id="viewLink" readonly aria-label="Viewer-Link"><button type="button" class="plain" data-copy="viewLink">Kopieren</button></div>
+    <p class="head">Adresse für Claude (MCP-Connector)</p>
+    <div class="group copy"><input id="mcpLink" readonly aria-label="MCP-Adresse"><button type="button" class="plain" data-copy="mcpLink">Kopieren</button></div>
+    <div class="adminOnly">
+      <form id="rename">
+        <p class="head">Reise</p>
+        <div class="group copy"><input name="name" required maxlength="100" aria-label="Name der Reise"><button class="plain">Umbenennen</button></div>
+      </form>
+      <button type="button" id="rotate" class="wide">Links erneuern</button>
+      <button type="button" id="delTrip" class="danger wide">Reise löschen</button>
+    </div>
+  </div>
+</dialog>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
+<script src="/app.js"></script>
+</body>
+</html>

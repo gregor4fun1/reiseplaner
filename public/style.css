@@ -1,0 +1,158 @@
+/* Farben nach Rolle, hell und dunkel. Glas nur auf der schwebenden Bedienebene (Leiste, Seitenleiste, Hinweise), Inhalte bleiben deckend. */
+:root {
+  color-scheme: light dark;
+  --bg: #f2f2f7; --surface: #fff; --fill: rgb(118 118 128 / .14);
+  --label: #000; --label2: #6e6e73; --sep: rgb(60 60 67 / .2);
+  --accent: #0071e3; --danger: #d70015;
+  --glass: rgb(255 255 255 / .72); --glass-thick: rgb(250 250 252 / .88); --edge: rgb(255 255 255 / .6);
+  --shadow: 0 8px 30px rgb(0 0 0 / .16);
+  --top: max(12px, env(safe-area-inset-top));
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000; --surface: #1c1c1e; --fill: rgb(118 118 128 / .28);
+    --label: #fff; --label2: #aeaeb2; --sep: rgb(84 84 88 / .65);
+    --accent: #0a84ff; --danger: #ff453a;
+    --glass: rgb(40 40 42 / .72); --glass-thick: rgb(28 28 30 / .88); --edge: rgb(255 255 255 / .12);
+    --shadow: 0 8px 30px rgb(0 0 0 / .55);
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body { font: 17px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; color: var(--label); background: var(--bg); -webkit-font-smoothing: antialiased; }
+h1, h2, h3, p, ul { margin: 0; padding: 0; }
+ul { list-style: none; }
+a { color: var(--accent); }
+.foot, small { font-size: 14px; color: var(--label2); }
+.foot { margin: 6px 4px 0; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.glass { background: var(--glass); -webkit-backdrop-filter: blur(24px) saturate(1.4); backdrop-filter: blur(24px) saturate(1.4); border: 1px solid var(--edge); box-shadow: var(--shadow); }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .glass { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border-color: var(--label2); }
+}
+
+/* Knöpfe: Kapsel, 44 px hoch. Farbe nur für die eine Hauptaktion. */
+button, input, select, textarea { font: inherit; color: inherit; }
+button { min-height: 44px; padding: 0 16px; border: 0; border-radius: 22px; background: var(--fill); font-weight: 600; font-size: 16px; cursor: pointer; }
+button.primary { background: var(--accent); color: #fff; }
+button.plain { background: none; color: var(--accent); }
+button.danger { color: var(--danger); }
+button.wide { display: block; width: 100%; margin-top: 12px; }
+@media (hover: hover) { button:hover { filter: brightness(.94); } }
+
+/* Gruppierte Formularzeilen */
+.group { background: var(--surface); border-radius: 14px; padding: 0 14px; margin-top: 8px; }
+.group > * + * { border-top: 1px solid var(--sep); }
+.group label, .rowText { display: flex; align-items: center; gap: 12px; min-height: 48px; }
+.group label > span, .rowText > span { flex: 0 0 6.5rem; }
+.rowText strong { font-weight: 400; color: var(--label2); padding: 8px 0; }
+.group label.stack { display: block; padding: 10px 0; }
+.group label.stack > span { display: block; font-size: 14px; color: var(--label2); }
+.group input, .group select, .group textarea { flex: 1; min-width: 0; width: 100%; min-height: 44px; border: 0; background: none; padding: 0; }
+.group textarea { resize: vertical; padding-top: 6px; }
+fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+fieldset:disabled :is(input, select, textarea) { opacity: 1; -webkit-text-fill-color: var(--label); }
+
+/* Startseite */
+#start { max-width: 34rem; margin: 0 auto; padding: calc(var(--top) + 32px) 16px 32px; }
+#start h1 { font-size: 34px; font-weight: 700; letter-spacing: -.02em; }
+#start h2, .head { font-size: 14px; font-weight: 400; color: var(--label2); margin: 28px 4px 0; }
+#mine a { display: flex; align-items: center; min-height: 48px; text-decoration: none; }
+.notice { margin-top: 16px; padding: 12px 14px; border-radius: 14px; background: var(--surface); }
+
+/* Reiseseite: Karte füllt alles, Bedienung schwebt darüber */
+#map { position: fixed; inset: 0; background: var(--bg); }
+#trip > header { position: fixed; z-index: 1100; top: var(--top); left: 12px; right: 12px; display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 18px; border-radius: 28px; }
+#trip > header h1 { flex: 1; min-width: 0; font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seg { display: flex; padding: 2px; border-radius: 22px; background: var(--fill); }
+.seg button { min-height: 40px; border-radius: 20px; background: none; font-weight: 500; }
+.seg button[aria-pressed="true"] { background: var(--surface); box-shadow: 0 1px 4px rgb(0 0 0 / .18); font-weight: 600; }
+.tabs { display: none; }
+.banner { position: fixed; z-index: 1090; top: calc(var(--top) + 68px); left: 12px; right: 12px; margin: 0 auto; max-width: 30rem; padding: 10px 16px; border-radius: 20px; font-size: 15px; text-align: center; }
+#offline { display: none; }
+.offline #offline { display: block; }
+.offline #add, .offline #save, .offline #del, .viewer #add, .viewer #save, .viewer #del, .viewer .adminOnly, .viewer .placeTools { display: none; }
+
+#plan { position: fixed; z-index: 1050; top: calc(var(--top) + 68px); right: 12px; bottom: 12px; width: 384px; overflow: auto; padding: 4px 12px 24px; border-radius: 28px; background: var(--glass-thick); }
+#plan h2 { font-size: 22px; font-weight: 700; margin: 20px 8px 4px; }
+#plan h3 { font-size: 15px; font-weight: 600; margin: 16px 8px 2px; }
+#plan h3 small { font-weight: 400; margin-left: 8px; }
+#plan .foot { margin: 6px 8px; }
+.item { display: flex; gap: 12px; align-items: center; width: 100%; min-height: 56px; padding: 6px 8px; border-radius: 14px; background: none; text-align: left; font-weight: 400; }
+.item strong { display: block; font-size: 17px; font-weight: 600; }
+.item small { display: block; }
+.leg { margin: 0 8px 4px 68px; font-size: 14px; color: var(--label2); }
+.leg:empty { display: none; }
+
+/* Marker: Aufenthalte als abgerundetes Quadrat, Tagesausflüge rund, Ideen gestrichelt */
+.pin { position: relative; display: grid; place-items: center; width: 100%; height: 100%; overflow: hidden; border: 3px solid #fff; border-radius: 30%; background: var(--c); box-shadow: 0 0 0 1.5px var(--c), 0 4px 12px rgb(0 0 0 / .35); }
+.pin svg { width: 56%; fill: #fff; }
+.pin.photo svg { display: none; }
+/* .leaflet-container davor, weil Leaflet Bildern in Markern sonst width: auto gibt */
+.pin img, .leaflet-container .pin img { position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.pin.sub { border-radius: 50%; }
+.pin.idea { border-style: dashed; }
+.pin.rowpin { flex: none; width: 44px; height: 44px; box-shadow: none; border-width: 2px; }
+.leaflet-marker-icon:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 30%; }
+.route { stroke: var(--accent); stroke-opacity: .8; }
+.route.spoke { stroke-opacity: .55; }
+
+/* Ortskarte am Marker */
+.leaflet-container { font: inherit; }
+.leaflet-popup-content-wrapper { padding: 0; overflow: hidden; border-radius: 22px; background: var(--surface); color: var(--label); box-shadow: var(--shadow); }
+.leaflet-popup-content { margin: 0; line-height: inherit; }
+.leaflet-popup-tip { background: var(--surface); }
+.leaflet-container a.leaflet-popup-close-button { top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 50%; background: rgb(0 0 0 / .55); color: #fff; font: 20px/30px system-ui; }
+.cardBody { padding: 12px 16px 16px; }
+.cardBody h3 { font-size: 20px; font-weight: 700; padding-right: 28px; }
+.cardBody p { margin: 4px 0 0; }
+.cardBody .meta { font-size: 14px; color: var(--label2); }
+.cardBody .note { font-size: 15px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-line; }
+.cardBody a { display: inline-block; margin-top: 8px; font-size: 15px; }
+.strip { display: flex; gap: 4px; overflow-x: auto; scroll-snap-type: x mandatory; }
+.strip img { flex: none; width: 84%; height: 160px; object-fit: cover; scroll-snap-align: start; }
+.strip img:only-child { width: 100%; }
+#itemImgs .strip { gap: 8px; margin-top: 8px; }
+#itemImgs .strip img { border-radius: 14px; }
+
+/* Kartenbedienung */
+.leaflet-bottom.leaflet-left { margin-bottom: env(safe-area-inset-bottom); }
+.leaflet-bar, .leaflet-touch .leaflet-bar { border: 0; border-radius: 22px; overflow: hidden; box-shadow: var(--shadow); }
+.leaflet-bar a, .leaflet-touch .leaflet-bar a { width: 44px; height: 44px; line-height: 44px; background: var(--glass-thick); color: var(--label); border-color: var(--sep); }
+.leaflet-control-attribution { border-radius: 8px; }
+
+/* Sheets */
+dialog { width: min(34rem, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 0; border: 0; border-radius: 28px; background: var(--bg); color: var(--label); box-shadow: var(--shadow); overflow: hidden; }
+dialog[open], dialog[open] > form { display: flex; flex-direction: column; min-height: 0; }
+dialog::backdrop { background: rgb(0 0 0 / .35); }
+.sheetBar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 10px 10px 6px; }
+.sheetBar h2 { font-size: 17px; font-weight: 600; max-width: 40vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sheetBar > :first-child { justify-self: start; }
+.sheetBar > :last-child { justify-self: end; }
+.sheetBody { overflow: auto; padding: 0 16px calc(20px + env(safe-area-inset-bottom)); }
+.sheetBody .head { margin-top: 20px; }
+.sheetBody > p { margin-top: 12px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+#results:empty { display: none; }
+#results button { width: 100%; padding: 0; text-align: left; font-weight: 400; border-radius: 0; }
+.copy { display: flex; align-items: center; gap: 8px; padding-right: 0; }
+.copy > * + * { border-top: 0; }
+
+@media (max-width: 899px) {
+  /* Am Handy wechselt eine Leiste unten zwischen Karte und Plan */
+  .tabs { display: flex; position: fixed; z-index: 1100; bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); padding: 4px; border-radius: 28px; }
+  .tabs button { min-height: 44px; min-width: 96px; border-radius: 24px; }
+  .leaflet-bottom.leaflet-left { margin-bottom: calc(64px + env(safe-area-inset-bottom)); }
+  #plan { inset: 0; width: auto; padding: calc(var(--top) + 68px) 12px calc(88px + env(safe-area-inset-bottom)); border: 0; border-radius: 0; background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; }
+  body[data-view="map"] #plan { display: none; }
+  /* Am Handy kommen Sheets von unten */
+  dialog { margin: auto 0 0; width: 100vw; max-width: 100vw; max-height: calc(100dvh - 44px); border-radius: 28px 28px 0 0; }
+}
+@media (max-width: 480px) {
+  #trip > header { padding-left: 14px; }
+  #trip > header button { padding: 0 12px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
